@@ -1,0 +1,53 @@
+name: Build FETA OS ISO
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Install Tools
+      run: |
+        sudo apt update
+        sudo apt install -y live-build xorriso squashfs-tools
+
+    - name: Setup FETA OS Configuration
+      run: |
+        mkdir feta_live && cd feta_live
+        lb config
+        
+        # 1. Προσθήκη σχολικών εφαρμογών
+        echo "scratch3 python3 python3-pip firefox-esr geany libreoffice" > config/package-lists/school-apps.list.chroot
+        
+        # 2. Αλλαγή ονόματος σε FETA-OS
+        echo "FETA-OS" > config/includes.chroot/etc/hostname
+
+        # 3. Δημιουργία του Package Manager για τα αρχεία .fet
+        mkdir -p config/includes.chroot/usr/local/bin/
+        cat << 'EOF' > config/includes.chroot/usr/local/bin/fet-installer
+        #!/bin/bash
+        # Ο Package Manager του FETA OS για αρχεία .fet
+        FILE=$1
+        if [ -f "$FILE" ]; then
+            echo "🧀 Εγκατάσταση της εφαρμογής FETA: $FILE..."
+            mkdir -p ~/.feta/apps/
+            tar -xf "$FILE" -C ~/.feta/apps/
+            echo "✅ Η εφαρμογή .fet εγκαταστάθηκε επιτυχώς στο FETA OS!"
+        else
+            echo "❌ Το αρχείο .fet δεν βρέθηκε."
+        fi
+        EOF
+        chmod +x config/includes.chroot/usr/local/bin/fet-installer
+
+    - name: Build ISO
+      run: |
+        cd feta_live
+        sudo lb build
+
+    - name: Upload Fully Working FETA ISO
+      uses: actions/upload-artifact@v4
+      with:
+        name: FETA-School-ISO
+        path: feta_live/*.iso
